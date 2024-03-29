@@ -1,0 +1,89 @@
+name: Dev Proxy and Playwright
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      #################################
+      # Cache + install of Playwright #
+      #################################
+      - name: Store Playwright's Version
+        run: |
+          PLAYWRIGHT_VERSION=$(npm ls @playwright/test | grep @playwright | sed 's/.*@//')
+          echo "Playwright's Version: $PLAYWRIGHT_VERSION"
+          echo "PLAYWRIGHT_VERSION=$PLAYWRIGHT_VERSION" >> $GITHUB_ENV
+
+      - name: Cache Playwright Browsers for Playwright's Version
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Install Playwright Browsers
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+
+      ################################
+      # Cache + install of Dev Proxy #
+      ################################
+      - name: Store Dev Proxy's Version
+        run: |
+          DEVPROXY_VERSION=$(curl -s https://api.github.com/repos/microsoft/dev-proxy/releases/latest | jq .tag_name -r)
+          echo "Dev Proxy's Version: $DEVPROXY_VERSION"
+          echo "DEVPROXY_VERSION=$DEVPROXY_VERSION" >> $GITHUB_ENV
+
+      - name: Cache Dev Proxy
+        id: cache-devproxy
+        uses: actions/cache@v4
+        with:
+          path: ./devproxy
+          key: devproxy-ubuntu-${{ env.DEVPROXY_VERSION }}
+
+      - name: Install Dev Proxy
+        if: steps.cache-devproxy.outputs.cache-hit != 'true'
+        run: bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)"
+
+      #######################
+      # Configure Dev Proxy #
+      #######################
+      - name: Run Dev Proxy
+        run: ./devproxy/devproxy &
+
+      - name: Install the Dev Proxy certificate for Chromium
+        timeout-minutes: 1
+        run: |
+          echo "Export the Dev Proxy's Root Certificate"
+          openssl pkcs12 -in ~/.config/dev-proxy/rootCert.pfx -clcerts -nokeys -out dev-proxy-ca.crt -passin pass:""
+
+          # echo "Installing certutil"
+          sudo apt install libnss3-tools
+
+          # echo "Adding certificate to the NSS database for Chromium"
+          mkdir -p $HOME/.pki/nssdb
+          certutil --empty-password -d $HOME/.pki/nssdb -N 
+          certutil -d sql:$HOME/.pki/nssdb -A -t "CT,," -n dev-proxy-ca.crt -i dev-proxy-ca.crt
+          echo "Certificate trusted."
+      
+      ##########################
+      # Start Playwright tests #
+      ##########################
+      - name: Run Playwright tests
+        run: npx playwright test

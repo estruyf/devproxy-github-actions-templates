@@ -1,0 +1,45 @@
+name: Dev Proxy
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dev Proxy
+        run: bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)"
+
+      - name: Run Dev Proxy
+        run: ./devproxy/devproxy &
+
+      - name: Install the Dev Proxy's certificate
+        timeout-minutes: 1
+        run: |
+          echo "Export the Dev Proxy's Root Certificate"
+          openssl pkcs12 -in ~/.config/dev-proxy/rootCert.pfx -clcerts -nokeys -out dev-proxy-ca.crt -passin pass:""
+
+          echo "Installing the Dev Proxy's Root Certificate"
+          sudo cp dev-proxy-ca.crt /usr/local/share/ca-certificates/
+
+          echo "Updating the CA certificates"
+          sudo update-ca-certificates
+          echo "Certificate trusted."
+
+          # Set the system proxy settings (optional)
+          echo "http_proxy=http://127.0.0.1:8000" >> $GITHUB_ENV
+          echo "https_proxy=http://127.0.0.1:8000" >> $GITHUB_ENV          
+
+      # Include the additional steps you want to run after the Dev Proxy started
+      - name: Test the Dev Proxy
+        run: |
+          curl -ix http://127.0.0.1:8000 https://jsonplaceholder.typicode.com/posts
+          # When you used the system proxy settings, you don't need to specify the proxy in the curl command
+          curl -i https://jsonplaceholder.typicode.com/posts

@@ -1,0 +1,51 @@
+name: macOS Dev Proxy with caching
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Store Dev Proxy's Version
+        run: |
+          DEVPROXY_VERSION=$(curl -s https://api.github.com/repos/microsoft/dev-proxy/releases/latest | jq .tag_name -r)
+          echo "Dev Proxy's Version: $DEVPROXY_VERSION"
+          echo "DEVPROXY_VERSION=$DEVPROXY_VERSION" >> $GITHUB_ENV          
+
+      - name: Cache Dev Proxy
+        id: cache-devproxy
+        uses: actions/cache@v4
+        with:
+          path: ./devproxy
+          key: devproxy-macos-${{ env.DEVPROXY_VERSION }}
+
+      - name: Install Dev Proxy
+        if: steps.cache-devproxy.outputs.cache-hit != 'true'
+        run: bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)"
+
+      - name: Run Dev Proxy
+        run: ./devproxy/devproxy &
+
+      - name: Install the Dev Proxy's certificate
+        timeout-minutes: 1
+        run: |
+          echo "Finding certificate..."
+          security find-certificate -c "Dev Proxy CA" -a -p > dev-proxy-ca.pem
+
+          echo "Trusting certificate..."
+          sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain dev-proxy-ca.pem
+          echo "Certificate trusted."          
+
+      - name: Test Dev Proxy
+        run: |
+          curl -ix http://127.0.0.1:8000 https://jsonplaceholder.typicode.com/posts
+          # When you used the system proxy settings, you don't need to specify the proxy in the curl command
+          curl -i https://jsonplaceholder.typicode.com/posts  
