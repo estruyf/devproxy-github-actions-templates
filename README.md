@@ -33,7 +33,6 @@ To know more about how these templates work, you can check the following blog po
 - [Use Playwright with Microsoft Dev Proxy on GitHub Actions](https://www.eliostruyf.com/playwright-microsoft-dev-proxy-github-actions)
 
 <br />
-<br />
 
 <p align="center">
   <a href="https://visitorbadge.io/status?path=https%3A%2F%2Fgithub.com%2Festruyf%2Fdevproxy-github-actions-templates"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Festruyf%2Fdevproxy-github-actions-templates&countColor=%23263759" /></a>
